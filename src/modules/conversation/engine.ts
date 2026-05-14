@@ -362,12 +362,26 @@ export class ConversationEngine {
       return;
     }
 
-    const payment = await this.deps.odoo.createOrderWithPayment(
-      partnerId,
-      phone,
-      items.map((item) => ({ product_id: item.product_id, quantity: item.quantity })),
-      Number((session.context_data as SessionContext).selected_shipping_address_id || 0) || undefined,
-    );
+    let payment;
+    try {
+      payment = await this.deps.odoo.createOrderWithPayment(
+        partnerId,
+        phone,
+        items.map((item) => ({ product_id: item.product_id, quantity: item.quantity })),
+        Number((session.context_data as SessionContext).selected_shipping_address_id || 0) || undefined,
+      );
+    } catch (error) {
+      const message = String((error as Error).message || '');
+      if (message.includes('Alamat pengiriman wajib diisi') || message.includes('Alamat pengiriman tidak valid')) {
+        await this.send(
+          phone,
+          'Alamat pengiriman belum valid. Ketik *alamat* untuk pilih/tambah alamat dulu, lalu ketik *checkout* lagi.',
+        );
+        await this.promptAddressChoice(phone, partnerId, session.partner_name, 'BROWSING_PRODUCTS');
+        return;
+      }
+      throw error;
+    }
 
     this.deps.carts.clear(phone);
 
