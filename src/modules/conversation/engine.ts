@@ -113,6 +113,7 @@ export class ConversationEngine {
     partnerName: string | null,
     returnState?: 'BROWSING_PRODUCTS',
   ): Promise<void> {
+    const previousContext = this.deps.sessions.loadOrCreate(phone).context_data as SessionContext;
     const list = await this.deps.odoo.listCustomerAddresses(partnerId);
     const addresses = list.addresses || [];
 
@@ -120,6 +121,7 @@ export class ConversationEngine {
       partnerId,
       partnerName,
       contextData: {
+        ...previousContext,
         addresses,
         return_state: returnState,
       },
@@ -131,7 +133,7 @@ export class ConversationEngine {
           partnerId,
           partnerName,
           contextData: {
-            ...context,
+            ...previousContext,
             return_state: undefined,
           },
         });
