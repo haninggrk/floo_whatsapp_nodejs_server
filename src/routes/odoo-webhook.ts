@@ -7,7 +7,7 @@ import { normalizePhone } from '../shared/phone.js';
 
 interface OdooWebhookPayload {
   event_id?: string;
-  type: 'payment_paid' | 'delivery_morning' | string;
+  type: 'payment_paid' | 'delivery_morning' | 'delivery_locked' | string;
   partner_phone?: string;
   partner_name?: string;
   order_name?: string;
@@ -87,6 +87,19 @@ export async function odooWebhookRoutes(
           payload.scheduled_date ? `Jadwal: ${payload.scheduled_date}` : '',
           '',
           'Tim kami akan menghubungi Anda jika ada update.',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      );
+    } else if (payload.type === 'delivery_locked') {
+      await opts.evolution.sendText(
+        phone,
+        [
+          `Halo ${payload.partner_name || 'Bapak/Ibu'},`,
+          `Jadwal pengiriman untuk order *${payload.order_name || '-'}* sudah dikunci.`,
+          payload.scheduled_date ? `Jadwal kirim: ${payload.scheduled_date}` : '',
+          '',
+          'Jika ada perubahan, tim kami akan menghubungi Anda langsung.',
         ]
           .filter(Boolean)
           .join('\n'),
