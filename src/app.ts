@@ -31,7 +31,7 @@ async function bootstrap(): Promise<void> {
   const app = Fastify({ logger: false, trustProxy: true });
 
   await app.register(healthRoutes);
-  await app.register(testRoutes, { config, evolution });
+  await app.register(testRoutes, { config, evolution, odoo, db });
   await app.register(webhookRoutes, { engine });
   await app.register(odooWebhookRoutes, { evolution, events, sessions, carts });
 

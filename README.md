@@ -48,6 +48,7 @@ docker build -t floo-whatsapp-nodejs-server .
 
 - `POST /test/send-message`
 - `GET /test/evolution-ping`
+- `GET /test/system-check`
 
 Purpose:
 - Sends a WhatsApp test message to `TEST_RECIPIENT_PHONE` (default `+6281357737545`).
@@ -66,3 +67,4 @@ Optional security:
 
 Diagnostic:
 - `GET /test/evolution-ping` checks DNS and basic HTTP reachability to `EVOLUTION_API_URL` from inside the app container.
+- `GET /test/system-check` checks database + Odoo auth + Evolution instance state in one endpoint.

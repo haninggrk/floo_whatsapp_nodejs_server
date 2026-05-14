@@ -1,7 +1,9 @@
 import { lookup } from 'node:dns/promises';
+import type Database from 'better-sqlite3';
 import type { FastifyInstance } from 'fastify';
 import type { AppConfig } from '../config/index.js';
 import type { EvolutionClient } from '../modules/evolution/client.js';
+import type { OdooClient } from '../modules/odoo/client.js';
 
 interface TestSendBody {
   text?: string;
@@ -12,6 +14,8 @@ export async function testRoutes(
   opts: {
     config: AppConfig;
     evolution: EvolutionClient;
+    odoo: OdooClient;
+    db: Database.Database;
   },
 ): Promise<void> {
   const requireKey = (request: { headers: Record<string, unknown> }, reply: { status: (code: number) => { send: (payload: Record<string, unknown>) => void } }): boolean => {
@@ -110,5 +114,53 @@ export async function testRoutes(
     }
 
     reply.status(200).send(result);
+  });
+
+  app.get('/test/system-check', async (request, reply) => {
+    if (requireKey(request, reply)) {
+      return;
+    }
+
+    const result: Record<string, unknown> = {
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      services: {},
+    };
+
+    try {
+      opts.db.prepare('SELECT 1 as ok').get();
+      (result.services as Record<string, unknown>).database = { ok: true };
+    } catch (error) {
+      const err = error as Error;
+      result.ok = false;
+      (result.services as Record<string, unknown>).database = { ok: false, error: err.message };
+    }
+
+    try {
+      const odoo = await opts.odoo.ping();
+      (result.services as Record<string, unknown>).odoo = odoo;
+    } catch (error) {
+      const err = error as Error;
+      result.ok = false;
+      (result.services as Record<string, unknown>).odoo = { ok: false, error: err.message };
+    }
+
+    try {
+      const evolution = await opts.evolution.getConnectionState();
+      (result.services as Record<string, unknown>).evolution = {
+        ok: evolution.state.toLowerCase() === 'open',
+        state: evolution.state,
+        response: evolution.response,
+      };
+      if (evolution.state.toLowerCase() !== 'open') {
+        result.ok = false;
+      }
+    } catch (error) {
+      const err = error as Error;
+      result.ok = false;
+      (result.services as Record<string, unknown>).evolution = { ok: false, error: err.message };
+    }
+
+    reply.status(result.ok ? 200 : 502).send(result);
   });
 }

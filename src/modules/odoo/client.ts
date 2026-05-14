@@ -38,6 +38,11 @@ export class OdooClient {
 
   constructor(private readonly config: AppConfig) {}
 
+  async ping(): Promise<{ ok: true; uid: number }> {
+    const uid = await this.getUid();
+    return { ok: true, uid };
+  }
+
   async getCustomerByPhone(phone: string): Promise<OdooCustomer> {
     return this.callModel('sale.order', 'wa_get_customer_by_phone', [phone]);
   }
