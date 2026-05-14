@@ -16,6 +16,9 @@ const ConfigSchema = z.object({
   EVOLUTION_API_KEY: z.string().min(1),
   EVOLUTION_INSTANCE: z.string().min(1),
 
+  TEST_RECIPIENT_PHONE: z.string().default('+6281357737545'),
+  TEST_ENDPOINT_KEY: z.string().optional(),
+
   BASE_URL: z.string().url(),
 });
 

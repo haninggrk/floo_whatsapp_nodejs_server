@@ -43,3 +43,22 @@ docker build -t floo-whatsapp-nodejs-server .
 - `POST /webhooks/odoo`
 - `GET /health/live`
 - `GET /health/ready`
+
+## Test endpoint
+
+- `POST /test/send-message`
+
+Purpose:
+- Sends a WhatsApp test message to `TEST_RECIPIENT_PHONE` (default `+6281357737545`).
+
+Body (JSON):
+
+```json
+{
+	"text": "Halo, ini pesan test"
+}
+```
+
+Optional security:
+- Set `TEST_ENDPOINT_KEY` in env.
+- If set, request must include header `x-test-key: <your-key>`.

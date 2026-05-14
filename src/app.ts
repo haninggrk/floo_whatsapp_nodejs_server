@@ -12,6 +12,7 @@ import { ConversationEngine } from './modules/conversation/engine.js';
 import { webhookRoutes } from './routes/webhook.js';
 import { odooWebhookRoutes } from './routes/odoo-webhook.js';
 import { healthRoutes } from './routes/health.js';
+import { testRoutes } from './routes/test.js';
 
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
@@ -30,6 +31,7 @@ async function bootstrap(): Promise<void> {
   const app = Fastify({ logger: false, trustProxy: true });
 
   await app.register(healthRoutes);
+  await app.register(testRoutes, { config, evolution });
   await app.register(webhookRoutes, { engine });
   await app.register(odooWebhookRoutes, { evolution, events, sessions, carts });
 
