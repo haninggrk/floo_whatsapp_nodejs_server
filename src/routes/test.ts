@@ -138,7 +138,14 @@ export async function testRoutes(
 
     try {
       const odoo = await opts.odoo.ping();
-      (result.services as Record<string, unknown>).odoo = odoo;
+      const waMethodCheck = await opts.odoo.getCustomerByPhone(opts.config.TEST_RECIPIENT_PHONE);
+      (result.services as Record<string, unknown>).odoo = {
+        ...odoo,
+        waMethodCheck: {
+          ok: true,
+          found: waMethodCheck.found,
+        },
+      };
     } catch (error) {
       const err = error as Error;
       result.ok = false;

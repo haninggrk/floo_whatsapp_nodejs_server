@@ -68,3 +68,4 @@ Optional security:
 Diagnostic:
 - `GET /test/evolution-ping` checks DNS and basic HTTP reachability to `EVOLUTION_API_URL` from inside the app container.
 - `GET /test/system-check` checks database + Odoo auth + Evolution instance state in one endpoint.
+- `GET /test/system-check` also verifies Odoo custom method `wa_get_customer_by_phone` is callable.

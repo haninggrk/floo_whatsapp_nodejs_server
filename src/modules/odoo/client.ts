@@ -105,7 +105,8 @@ export class OdooClient {
 
     const body = (await response.json()) as OdooRpcResponse<T>;
     if (body.error) {
-      throw new Error(body.error.message || `Odoo model call failed: ${model}.${method}`);
+      const extra = body.error.data ? ` | data=${JSON.stringify(body.error.data)}` : '';
+      throw new Error((body.error.message || `Odoo model call failed: ${model}.${method}`) + extra);
     }
 
     if (body.result === undefined) {
