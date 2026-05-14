@@ -1,6 +1,6 @@
 import type { CartRepository } from '../session/cart-repository.js';
 import type { EvolutionClient } from '../evolution/client.js';
-import type { OdooClient, OdooProduct } from '../odoo/client.js';
+import type { OdooAddress, OdooClient, OdooProduct } from '../odoo/client.js';
 import type { SessionRepository, Session } from '../session/session-repository.js';
 import { parsePositiveNumber, parseSelection } from '../../shared/validation.js';
 
@@ -13,6 +13,8 @@ interface ConversationDeps {
 
 interface SessionContext extends Record<string, unknown> {
   wa_shipping_address?: string;
+  addresses?: OdooAddress[];
+  selected_shipping_address_id?: number;
   search?: string;
   offset?: number;
   products?: OdooProduct[];
@@ -47,7 +49,7 @@ export class ConversationEngine {
           '- *keranjang* untuk lihat item',
           '- *hapus <nomor>* untuk hapus item keranjang',
           '- *checkout* untuk lanjut pembayaran',
-          '- *ubah alamat* untuk ganti alamat',
+          '- *alamat* untuk pilih/tambah alamat pengiriman',
           '- *status* untuk cek status order',
           '- *batal* untuk membatalkan sesi',
         ].join('\n'),
@@ -67,8 +69,11 @@ export class ConversationEngine {
       case 'WAITING_NAME':
         await this.handleName(phone, session, message);
         break;
-      case 'WAITING_ADDRESS':
-        await this.handleAddress(phone, session, message);
+      case 'WAITING_ADDRESS_CHOICE':
+        await this.handleAddressChoice(phone, session, message, lower);
+        break;
+      case 'WAITING_ADDRESS_NEW':
+        await this.handleAddressNew(phone, session, message);
         break;
       case 'BROWSING_PRODUCTS':
         await this.handleProductBrowsing(phone, session, message, lower);
@@ -90,32 +95,8 @@ export class ConversationEngine {
     const existing = await this.deps.odoo.getCustomerByPhone(phone);
 
     if (existing.found && existing.partner_id) {
-      const context: SessionContext = {
-        wa_shipping_address: existing.wa_shipping_address || '',
-        search: '',
-        offset: 0,
-      };
-
-      if (!existing.wa_shipping_address) {
-        this.deps.sessions.update(phone, 'WAITING_ADDRESS', {
-          partnerId: existing.partner_id,
-          partnerName: existing.name,
-          contextData: context,
-        });
-        await this.send(
-          phone,
-          `Halo *${existing.name}*, alamat pengiriman belum ada. Mohon kirim alamat lengkap Anda.`,
-        );
-        return;
-      }
-
-      this.deps.sessions.update(phone, 'BROWSING_PRODUCTS', {
-        partnerId: existing.partner_id,
-        partnerName: existing.name,
-        contextData: context,
-      });
       await this.send(phone, `Halo *${existing.name}* 👋`);
-      await this.showProductList(phone, existing.partner_id, '', 0);
+      await this.promptAddressChoice(phone, existing.partner_id, existing.name);
       return;
     }
 
@@ -136,18 +117,68 @@ export class ConversationEngine {
       throw new Error('Odoo did not return partner_id for created customer');
     }
 
-    this.deps.sessions.update(phone, 'WAITING_ADDRESS', {
-      partnerId: customer.partner_id,
-      partnerName: customer.name,
+    await this.send(phone, `Terima kasih *${customer.name}*.`);
+    await this.promptAddressChoice(phone, customer.partner_id, customer.name);
+  }
+
+  private async promptAddressChoice(
+    phone: string,
+    partnerId: number,
+    partnerName: string | null,
+    returnState?: 'BROWSING_PRODUCTS',
+  ): Promise<void> {
+    const list = await this.deps.odoo.listCustomerAddresses(partnerId);
+    const addresses = list.addresses || [];
+
+    this.deps.sessions.update(phone, 'WAITING_ADDRESS_CHOICE', {
+      partnerId,
+      partnerName,
       contextData: {
-        wa_shipping_address: customer.wa_shipping_address || '',
+        addresses,
+        return_state: returnState,
       },
     });
 
-    await this.send(phone, `Terima kasih *${customer.name}*. Kirim alamat pengiriman Anda.`);
+    if (addresses.length === 0) {
+      await this.send(
+        phone,
+        [
+          'Belum ada alamat tersimpan untuk pengiriman.',
+          'Kirim alamat baru dengan format berikut (1 pesan):',
+          'Nama Penerima: ...',
+          'No HP: ...',
+          'Jalan: ...',
+          'Kelurahan: ...',
+          'Kecamatan: ...',
+          'Kota/Kabupaten: ...',
+          'Provinsi: ...',
+          'Kode Pos: ...',
+        ].join('\n'),
+      );
+      this.deps.sessions.update(phone, 'WAITING_ADDRESS_NEW', {
+        partnerId,
+        partnerName,
+        contextData: {
+          return_state: returnState,
+        },
+      });
+      return;
+    }
+
+    const lines = addresses.map((a, i) => `${i + 1}. ${a.label}\n   ${a.full_address}`);
+    await this.send(
+      phone,
+      [
+        'Pilih alamat pengiriman:',
+        ...lines,
+        '',
+        'Ketik angka untuk memilih alamat.',
+        'Ketik *tambah* untuk menambah alamat baru.',
+      ].join('\n'),
+    );
   }
 
-  private async handleAddress(phone: string, session: Session, address: string): Promise<void> {
+  private async handleAddressChoice(phone: string, session: Session, message: string, lower: string): Promise<void> {
     const partnerId = session.partner_id;
     if (!partnerId) {
       this.deps.sessions.reset(phone);
@@ -155,30 +186,111 @@ export class ConversationEngine {
       return;
     }
 
-    if (address.length < 10) {
-      await this.send(phone, 'Alamat terlalu singkat. Mohon kirim alamat yang lebih lengkap.');
+    const context = session.context_data as SessionContext;
+    const addresses = context.addresses || [];
+    const returnState = context.return_state;
+
+    if (['tambah', 'baru', 'new'].includes(lower)) {
+      this.deps.sessions.update(phone, 'WAITING_ADDRESS_NEW', {
+        partnerId,
+        partnerName: session.partner_name,
+        contextData: {
+          return_state: returnState,
+        },
+      });
+      await this.send(
+        phone,
+        [
+          'Silakan kirim alamat baru dengan format berikut (1 pesan):',
+          'Nama Penerima: ...',
+          'No HP: ...',
+          'Jalan: ...',
+          'Kelurahan: ...',
+          'Kecamatan: ...',
+          'Kota/Kabupaten: ...',
+          'Provinsi: ...',
+          'Kode Pos: ...',
+        ].join('\n'),
+      );
       return;
     }
 
-    await this.deps.odoo.updateCustomerAddress(partnerId, address);
+    const selected = parseSelection(message, addresses.length);
+    if (selected === null) {
+      await this.send(phone, 'Input tidak valid. Ketik angka alamat atau *tambah*.');
+      return;
+    }
 
-    const context = session.context_data as SessionContext;
-    const returnState = context.return_state;
+    const chosen = addresses[selected - 1];
 
     this.deps.sessions.update(phone, 'BROWSING_PRODUCTS', {
       partnerId,
       partnerName: session.partner_name,
       contextData: {
         ...context,
-        wa_shipping_address: address,
+        selected_shipping_address_id: chosen.id,
+        wa_shipping_address: chosen.full_address,
         return_state: undefined,
       },
     });
 
-    await this.send(phone, 'Alamat tersimpan.');
+    await this.send(phone, `Alamat dipilih: *${chosen.label}*`);
 
     if (returnState === 'BROWSING_PRODUCTS') {
-      await this.send(phone, 'Lanjut pilih produk atau ketik *checkout* jika sudah selesai.');
+      await this.send(phone, 'Lanjut pilih produk atau ketik *checkout* jika sudah siap bayar.');
+      return;
+    }
+
+    await this.showProductList(phone, partnerId, '', 0);
+  }
+
+  private async handleAddressNew(phone: string, session: Session, message: string): Promise<void> {
+    const partnerId = session.partner_id;
+    if (!partnerId) {
+      this.deps.sessions.reset(phone);
+      await this.send(phone, 'Sesi tidak valid. Ketik *mulai* untuk memulai ulang.');
+      return;
+    }
+
+    const parsed = this.parseAddressInput(message);
+    if (!parsed) {
+      await this.send(
+        phone,
+        [
+          'Format alamat belum lengkap.',
+          'Gunakan format (1 pesan):',
+          'Nama Penerima: ...',
+          'No HP: ...',
+          'Jalan: ...',
+          'Kelurahan: ...',
+          'Kecamatan: ...',
+          'Kota/Kabupaten: ...',
+          'Provinsi: ...',
+          'Kode Pos: ...',
+        ].join('\n'),
+      );
+      return;
+    }
+
+    const created = await this.deps.odoo.createCustomerAddress(partnerId, parsed);
+
+    const context = session.context_data as SessionContext;
+    const returnState = context.return_state;
+    this.deps.sessions.update(phone, 'BROWSING_PRODUCTS', {
+      partnerId,
+      partnerName: session.partner_name,
+      contextData: {
+        ...context,
+        selected_shipping_address_id: created.address_id,
+        wa_shipping_address: created.full_address,
+        return_state: undefined,
+      },
+    });
+
+    await this.send(phone, `Alamat baru tersimpan: *${created.label}*`);
+
+    if (returnState === 'BROWSING_PRODUCTS') {
+      await this.send(phone, 'Lanjut pilih produk atau ketik *checkout* jika sudah siap bayar.');
       return;
     }
 
@@ -225,15 +337,7 @@ export class ConversationEngine {
     }
 
     if (lower === 'alamat' || lower === 'ubah alamat') {
-      this.deps.sessions.update(phone, 'WAITING_ADDRESS', {
-        partnerId,
-        partnerName: session.partner_name,
-        contextData: {
-          ...context,
-          return_state: 'BROWSING_PRODUCTS',
-        },
-      });
-      await this.send(phone, 'Silakan kirim alamat baru Anda.');
+      await this.promptAddressChoice(phone, partnerId, session.partner_name, 'BROWSING_PRODUCTS');
       return;
     }
 
@@ -330,6 +434,7 @@ export class ConversationEngine {
       partnerId,
       phone,
       items.map((item) => ({ product_id: item.product_id, quantity: item.quantity })),
+      Number((session.context_data as SessionContext).selected_shipping_address_id || 0) || undefined,
     );
 
     this.deps.carts.clear(phone);
@@ -461,6 +566,51 @@ export class ConversationEngine {
         `Jumlah item keranjang: ${items.length}`,
       ].join('\n'),
     );
+  }
+
+  private parseAddressInput(text: string): {
+    recipient_name: string;
+    phone: string;
+    street: string;
+    village: string;
+    district: string;
+    city: string;
+    province: string;
+    postal_code: string;
+  } | null {
+    const map: Record<string, string> = {};
+    for (const line of text.split('\n')) {
+      const idx = line.indexOf(':');
+      if (idx <= 0) continue;
+      const key = line.slice(0, idx).trim().toLowerCase();
+      const value = line.slice(idx + 1).trim();
+      if (!value) continue;
+      map[key] = value;
+    }
+
+    const pick = (keys: string[]): string => {
+      for (const key of keys) {
+        if (map[key]) return map[key];
+      }
+      return '';
+    };
+
+    const payload = {
+      recipient_name: pick(['nama penerima', 'nama', 'penerima']),
+      phone: pick(['no hp', 'hp', 'telepon', 'phone']),
+      street: pick(['jalan', 'alamat', 'alamat jalan']),
+      village: pick(['kelurahan', 'desa']),
+      district: pick(['kecamatan']),
+      city: pick(['kota/kabupaten', 'kota', 'kabupaten']),
+      province: pick(['provinsi']),
+      postal_code: pick(['kode pos', 'kodepos', 'zip']),
+    };
+
+    if (Object.values(payload).some((v) => !v)) {
+      return null;
+    }
+
+    return payload;
   }
 
   private async send(phone: string, text: string): Promise<void> {

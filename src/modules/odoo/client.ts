@@ -33,6 +33,12 @@ export interface OdooPaymentResponse {
   payment_url: string;
 }
 
+export interface OdooAddress {
+  id: number;
+  label: string;
+  full_address: string;
+}
+
 export class OdooClient {
   private uid: number | null = null;
 
@@ -55,6 +61,26 @@ export class OdooClient {
     return this.callModel('sale.order', 'wa_update_customer_address', [partnerId, address]);
   }
 
+  async listCustomerAddresses(partnerId: number): Promise<{ addresses: OdooAddress[] }> {
+    return this.callModel('sale.order', 'wa_list_customer_addresses', [partnerId]);
+  }
+
+  async createCustomerAddress(
+    partnerId: number,
+    payload: {
+      recipient_name: string;
+      phone: string;
+      street: string;
+      village: string;
+      district: string;
+      city: string;
+      province: string;
+      postal_code: string;
+    },
+  ): Promise<{ address_id: number; label: string; full_address: string }> {
+    return this.callModel('sale.order', 'wa_create_customer_address', [partnerId, payload]);
+  }
+
   async listProducts(
     partnerId: number,
     search: string,
@@ -68,8 +94,9 @@ export class OdooClient {
     partnerId: number,
     phone: string,
     items: Array<{ product_id: number; quantity: number }>,
+    shippingAddressId?: number,
   ): Promise<OdooPaymentResponse> {
-    return this.callModel('sale.order', 'wa_create_order_with_payment', [partnerId, phone, items]);
+    return this.callModel('sale.order', 'wa_create_order_with_payment', [partnerId, phone, items, shippingAddressId || false]);
   }
 
   private async callModel<T>(model: string, method: string, args: unknown[]): Promise<T> {

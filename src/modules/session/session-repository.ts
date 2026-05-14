@@ -3,7 +3,8 @@ import type Database from 'better-sqlite3';
 export const STATES = [
   'IDLE',
   'WAITING_NAME',
-  'WAITING_ADDRESS',
+  'WAITING_ADDRESS_CHOICE',
+  'WAITING_ADDRESS_NEW',
   'BROWSING_PRODUCTS',
   'WAITING_QUANTITY',
   'PAYMENT_PENDING',
