@@ -1,0 +1,45 @@
+# Floo WhatsApp Node.js Server
+
+Customer-facing WhatsApp conversation service for order intake, payment-link handoff, and Odoo event notifications.
+
+## What this service does
+
+- Receives incoming WhatsApp messages from Evolution API webhook.
+- Detects customer in Odoo by phone number.
+- Onboards unknown customer by asking name.
+- Requires editable free-text address before checkout.
+- Shows only WhatsApp-tagged products from Odoo.
+- Builds cart and creates order + payment link in Odoo.
+- Waits for Odoo webhook (`payment_paid`) and then sends invoice message.
+- Sends morning delivery notification from Odoo webhook (`delivery_morning`) without invoice.
+
+## Environment
+
+Copy `.env.example` to `.env` and fill values.
+
+## Run locally
+
+```bash
+npm install
+npm run dev
+```
+
+## Build
+
+```bash
+npm run build
+npm start
+```
+
+## Docker
+
+```bash
+docker build -t floo-whatsapp-nodejs-server .
+```
+
+## Webhook endpoints
+
+- `POST /webhooks/whatsapp/messages/messages-upsert`
+- `POST /webhooks/odoo`
+- `GET /health/live`
+- `GET /health/ready`
