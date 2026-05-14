@@ -398,13 +398,12 @@ export class ConversationEngine {
     await this.send(
       phone,
       [
-        `Order *${payment.order_name}* berhasil dibuat.`,
-        `Total: ${payment.currency} ${payment.amount_total.toLocaleString('id-ID')}`,
+        `✅ *Order ${payment.order_name} berhasil dibuat*`,
         '',
-        'Silakan lakukan pembayaran melalui link berikut:',
+        `💰 *Total:* ${payment.currency} ${payment.amount_total.toLocaleString('id-ID')}`,
+        '',
+        '🔗 *Silakan lakukan pembayaran melalui link berikut:*',
         payment.payment_url,
-        '',
-        'Setelah pembayaran berhasil, invoice akan dikirim otomatis.',
       ].join('\n'),
     );
   }

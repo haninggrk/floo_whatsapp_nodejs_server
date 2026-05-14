@@ -19,6 +19,35 @@ interface OdooWebhookPayload {
   scheduled_date?: string;
 }
 
+function formatScheduledDateId(raw?: string): { dateText?: string; timeText?: string } {
+  const text = String(raw || '').trim();
+  const m = text.match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2})$/);
+  if (!m) {
+    return {};
+  }
+
+  const day = Number(m[1]);
+  const month = Number(m[2]) - 1;
+  const year = Number(m[3]);
+  const hour = m[4];
+  const minute = m[5];
+
+  const dateObj = new Date(year, month, day);
+  if (Number.isNaN(dateObj.getTime())) {
+    return {};
+  }
+
+  const weekdays = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  const weekdayName = weekdays[dateObj.getDay()] || '';
+  const monthName = months[month] || '';
+
+  return {
+    dateText: weekdayName && monthName ? `${weekdayName}, ${day} ${monthName} ${year}` : undefined,
+    timeText: `${hour}:${minute}`,
+  };
+}
+
 export async function odooWebhookRoutes(
   app: FastifyInstance,
   opts: {
@@ -92,21 +121,26 @@ export async function odooWebhookRoutes(
           .join('\n'),
       );
     } else if (payload.type === 'delivery_locked') {
+      const when = formatScheduledDateId(payload.scheduled_date);
       await opts.evolution.sendText(
         phone,
         [
-          `Halo, pesanan *${payload.order_name || '-'}* telah dijadwalkan dikirim pada ${payload.scheduled_date || 'jadwal yang ditentukan'}.`,
+          `Halo, pesanan *${payload.order_name || '-'}* telah dijadwalkan dikirim.`,
+          when.dateText ? `📅 Tanggal: ${when.dateText}` : (payload.scheduled_date ? `📅 Tanggal: ${payload.scheduled_date}` : ''),
+          when.timeText ? `🕐 Jam: ${when.timeText}` : '',
         ]
           .filter(Boolean)
           .join('\n'),
       );
     } else if (payload.type === 'delivery_unlocked') {
+      const when = formatScheduledDateId(payload.scheduled_date);
       await opts.evolution.sendText(
         phone,
         [
           `Halo ${payload.partner_name || 'Bapak/Ibu'},`,
           `Jadwal pengiriman untuk order *${payload.order_name || '-'}* sedang dibuka kembali untuk penyesuaian.`,
-          payload.scheduled_date ? `Jadwal saat ini: ${payload.scheduled_date}` : '',
+          when.dateText ? `📅 Tanggal: ${when.dateText}` : (payload.scheduled_date ? `📅 Tanggal: ${payload.scheduled_date}` : ''),
+          when.timeText ? `🕐 Jam: ${when.timeText}` : '',
           '',
           'Kami akan kirim konfirmasi lagi setelah jadwal dikunci ulang.',
         ]
