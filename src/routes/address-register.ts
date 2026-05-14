@@ -20,6 +20,37 @@ interface AddressRegisterBody {
   postal_code?: string;
 }
 
+interface RegionParentQuery {
+  provinceId?: string;
+  regencyId?: string;
+  districtId?: string;
+}
+
+interface RegionRow {
+  id: string;
+  parent_id?: string;
+  name: string;
+}
+
+const REGION_SOURCES = {
+  provinces: 'https://raw.githubusercontent.com/edwardsamuel/Wilayah-Administratif-Indonesia/master/csv/provinces.csv',
+  regencies: 'https://raw.githubusercontent.com/edwardsamuel/Wilayah-Administratif-Indonesia/master/csv/regencies.csv',
+  districts: 'https://raw.githubusercontent.com/edwardsamuel/Wilayah-Administratif-Indonesia/master/csv/districts.csv',
+  villages: 'https://raw.githubusercontent.com/edwardsamuel/Wilayah-Administratif-Indonesia/master/csv/villages.csv',
+} as const;
+
+const REGION_CACHE: {
+  provinces: RegionRow[] | null;
+  regencies: RegionRow[] | null;
+  districts: RegionRow[] | null;
+  villages: RegionRow[] | null;
+} = {
+  provinces: null,
+  regencies: null,
+  districts: null,
+  villages: null,
+};
+
 function escHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -88,15 +119,16 @@ function renderFormHtml(phone: string, partnerId: string): string {
       color: var(--muted);
       font-weight: 600;
     }
-    input {
+    input, select {
       border: 1px solid var(--line);
       border-radius: 10px;
       padding: 10px 12px;
       font-size: 14px;
       color: var(--ink);
       outline: none;
+      background: #fff;
     }
-    input:focus {
+    input:focus, select:focus {
       border-color: var(--brand);
       box-shadow: 0 0 0 3px rgba(3, 101, 248, 0.12);
     }
@@ -162,20 +194,28 @@ function renderFormHtml(phone: string, partnerId: string): string {
       </label>
 
       <div class="grid-2">
-        <label>Kelurahan
-          <input id="village" type="text" required />
+        <label>Provinsi
+          <select id="province" required>
+            <option value="">Pilih Provinsi</option>
+          </select>
         </label>
-        <label>Kecamatan
-          <input id="district" type="text" required />
+        <label>Kota/Kabupaten
+          <select id="city" required disabled>
+            <option value="">Pilih Kota/Kabupaten</option>
+          </select>
         </label>
       </div>
 
       <div class="grid-2">
-        <label>Kota/Kabupaten
-          <input id="city" type="text" required />
+        <label>Kecamatan
+          <select id="district" required disabled>
+            <option value="">Pilih Kecamatan</option>
+          </select>
         </label>
-        <label>Provinsi
-          <input id="province" type="text" required />
+        <label>Kelurahan
+          <select id="village" required disabled>
+            <option value="">Pilih Kelurahan</option>
+          </select>
         </label>
       </div>
 
@@ -193,6 +233,93 @@ function renderFormHtml(phone: string, partnerId: string): string {
     const form = document.getElementById('addressForm');
     const submitBtn = document.getElementById('submitBtn');
     const msg = document.getElementById('msg');
+    const provinceEl = document.getElementById('province');
+    const cityEl = document.getElementById('city');
+    const districtEl = document.getElementById('district');
+    const villageEl = document.getElementById('village');
+
+    function setOptions(selectEl, items, placeholder) {
+      selectEl.innerHTML = '';
+      const first = document.createElement('option');
+      first.value = '';
+      first.textContent = placeholder;
+      selectEl.appendChild(first);
+      for (const item of items) {
+        const option = document.createElement('option');
+        option.value = item.id;
+        option.textContent = item.name;
+        selectEl.appendChild(option);
+      }
+    }
+
+    async function loadProvinces() {
+      const response = await fetch('/address/regions/provinces');
+      const json = await response.json();
+      setOptions(provinceEl, json.items || [], 'Pilih Provinsi');
+    }
+
+    async function loadRegencies(provinceId) {
+      const response = await fetch('/address/regions/regencies?provinceId=' + encodeURIComponent(provinceId));
+      const json = await response.json();
+      setOptions(cityEl, json.items || [], 'Pilih Kota/Kabupaten');
+      cityEl.disabled = false;
+      setOptions(districtEl, [], 'Pilih Kecamatan');
+      districtEl.disabled = true;
+      setOptions(villageEl, [], 'Pilih Kelurahan');
+      villageEl.disabled = true;
+    }
+
+    async function loadDistricts(regencyId) {
+      const response = await fetch('/address/regions/districts?regencyId=' + encodeURIComponent(regencyId));
+      const json = await response.json();
+      setOptions(districtEl, json.items || [], 'Pilih Kecamatan');
+      districtEl.disabled = false;
+      setOptions(villageEl, [], 'Pilih Kelurahan');
+      villageEl.disabled = true;
+    }
+
+    async function loadVillages(districtId) {
+      const response = await fetch('/address/regions/villages?districtId=' + encodeURIComponent(districtId));
+      const json = await response.json();
+      setOptions(villageEl, json.items || [], 'Pilih Kelurahan');
+      villageEl.disabled = false;
+    }
+
+    provinceEl.addEventListener('change', async () => {
+      const provinceId = provinceEl.value;
+      if (!provinceId) {
+        setOptions(cityEl, [], 'Pilih Kota/Kabupaten');
+        cityEl.disabled = true;
+        setOptions(districtEl, [], 'Pilih Kecamatan');
+        districtEl.disabled = true;
+        setOptions(villageEl, [], 'Pilih Kelurahan');
+        villageEl.disabled = true;
+        return;
+      }
+      await loadRegencies(provinceId);
+    });
+
+    cityEl.addEventListener('change', async () => {
+      const regencyId = cityEl.value;
+      if (!regencyId) {
+        setOptions(districtEl, [], 'Pilih Kecamatan');
+        districtEl.disabled = true;
+        setOptions(villageEl, [], 'Pilih Kelurahan');
+        villageEl.disabled = true;
+        return;
+      }
+      await loadDistricts(regencyId);
+    });
+
+    districtEl.addEventListener('change', async () => {
+      const districtId = districtEl.value;
+      if (!districtId) {
+        setOptions(villageEl, [], 'Pilih Kelurahan');
+        villageEl.disabled = true;
+        return;
+      }
+      await loadVillages(districtId);
+    });
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -208,10 +335,10 @@ function renderFormHtml(phone: string, partnerId: string): string {
         recipient_name: document.getElementById('recipient_name').value,
         contact_phone: document.getElementById('contact_phone').value,
         street: document.getElementById('street').value,
-        village: document.getElementById('village').value,
-        district: document.getElementById('district').value,
-        city: document.getElementById('city').value,
-        province: document.getElementById('province').value,
+        village: villageEl.options[villageEl.selectedIndex] ? villageEl.options[villageEl.selectedIndex].text : '',
+        district: districtEl.options[districtEl.selectedIndex] ? districtEl.options[districtEl.selectedIndex].text : '',
+        city: cityEl.options[cityEl.selectedIndex] ? cityEl.options[cityEl.selectedIndex].text : '',
+        province: provinceEl.options[provinceEl.selectedIndex] ? provinceEl.options[provinceEl.selectedIndex].text : '',
         postal_code: document.getElementById('postal_code').value,
       };
 
@@ -238,15 +365,90 @@ function renderFormHtml(phone: string, partnerId: string): string {
         submitBtn.textContent = 'Simpan Alamat';
       }
     });
+
+    loadProvinces().catch((error) => {
+      msg.className = 'err';
+      msg.textContent = String(error && error.message ? error.message : error);
+    });
   </script>
 </body>
 </html>`;
+}
+
+function parseRegionCsv(content: string, hasParent: boolean): RegionRow[] {
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split(',');
+      if (!hasParent) {
+        return { id: (parts[0] || '').trim(), name: (parts[1] || '').trim() };
+      }
+      return {
+        id: (parts[0] || '').trim(),
+        parent_id: (parts[1] || '').trim(),
+        name: parts.slice(2).join(',').trim(),
+      };
+    })
+    .filter((row) => row.id && row.name);
+}
+
+async function loadRegionData(kind: keyof typeof REGION_SOURCES): Promise<RegionRow[]> {
+  const cached = REGION_CACHE[kind];
+  if (cached) {
+    return cached;
+  }
+
+  const response = await fetch(REGION_SOURCES[kind]);
+  if (!response.ok) {
+    throw new Error(`Failed loading ${kind} data`);
+  }
+  const text = await response.text();
+  const rows = parseRegionCsv(text, kind !== 'provinces');
+  REGION_CACHE[kind] = rows;
+  return rows;
 }
 
 export async function addressRegisterRoutes(
   app: FastifyInstance,
   opts: { odoo: OdooClient },
 ): Promise<void> {
+  app.get('/address/regions/provinces', async (_request, reply) => {
+    const items = await loadRegionData('provinces');
+    reply.status(200).send({ items });
+  });
+
+  app.get<{ Querystring: RegionParentQuery }>('/address/regions/regencies', async (request, reply) => {
+    const provinceId = String(request.query.provinceId || '').trim();
+    if (!provinceId) {
+      reply.status(400).send({ items: [], message: 'provinceId is required' });
+      return;
+    }
+    const all = await loadRegionData('regencies');
+    reply.status(200).send({ items: all.filter((item) => item.parent_id === provinceId) });
+  });
+
+  app.get<{ Querystring: RegionParentQuery }>('/address/regions/districts', async (request, reply) => {
+    const regencyId = String(request.query.regencyId || '').trim();
+    if (!regencyId) {
+      reply.status(400).send({ items: [], message: 'regencyId is required' });
+      return;
+    }
+    const all = await loadRegionData('districts');
+    reply.status(200).send({ items: all.filter((item) => item.parent_id === regencyId) });
+  });
+
+  app.get<{ Querystring: RegionParentQuery }>('/address/regions/villages', async (request, reply) => {
+    const districtId = String(request.query.districtId || '').trim();
+    if (!districtId) {
+      reply.status(400).send({ items: [], message: 'districtId is required' });
+      return;
+    }
+    const all = await loadRegionData('villages');
+    reply.status(200).send({ items: all.filter((item) => item.parent_id === districtId) });
+  });
+
   app.get<{ Querystring: AddressRegisterQuery }>('/address/register', async (request, reply) => {
     const phone = String(request.query.phone || '').trim();
     const partnerId = String(request.query.partnerId || '').trim();
