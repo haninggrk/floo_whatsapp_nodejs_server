@@ -14,6 +14,7 @@ import { odooWebhookRoutes } from './routes/odoo-webhook.js';
 import { healthRoutes } from './routes/health.js';
 import { testRoutes } from './routes/test.js';
 import { addressRegisterRoutes } from './routes/address-register.js';
+import { xenditSimulateRoutes } from './routes/xendit-simulate.js';
 
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
@@ -34,6 +35,7 @@ async function bootstrap(): Promise<void> {
   await app.register(healthRoutes);
   await app.register(testRoutes, { config, evolution, odoo, db });
   await app.register(addressRegisterRoutes, { odoo, evolution });
+  await app.register(xenditSimulateRoutes, { config });
   await app.register(webhookRoutes, { engine });
   await app.register(odooWebhookRoutes, { evolution, events, sessions, carts });
 

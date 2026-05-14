@@ -19,6 +19,10 @@ const ConfigSchema = z.object({
   TEST_RECIPIENT_PHONE: z.string().default('+6281357737545'),
   TEST_ENDPOINT_KEY: z.string().optional(),
 
+  XENDIT_API_URL: z.string().url().default('https://api.xendit.co'),
+  XENDIT_SECRET_KEY_TEST: z.string().optional(),
+  SIMULATE_PAGE_PASSWORD: z.string().default(''),
+
   BASE_URL: z.string().url(),
 });
 
