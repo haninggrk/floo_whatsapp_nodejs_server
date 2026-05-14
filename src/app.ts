@@ -13,6 +13,7 @@ import { webhookRoutes } from './routes/webhook.js';
 import { odooWebhookRoutes } from './routes/odoo-webhook.js';
 import { healthRoutes } from './routes/health.js';
 import { testRoutes } from './routes/test.js';
+import { addressRegisterRoutes } from './routes/address-register.js';
 
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
@@ -26,12 +27,13 @@ async function bootstrap(): Promise<void> {
 
   const odoo = new OdooClient(config);
   const evolution = new EvolutionClient(config);
-  const engine = new ConversationEngine({ sessions, carts, odoo, evolution });
+  const engine = new ConversationEngine({ sessions, carts, odoo, evolution, baseUrl: config.BASE_URL });
 
   const app = Fastify({ logger: false, trustProxy: true });
 
   await app.register(healthRoutes);
   await app.register(testRoutes, { config, evolution, odoo, db });
+  await app.register(addressRegisterRoutes, { odoo });
   await app.register(webhookRoutes, { engine });
   await app.register(odooWebhookRoutes, { evolution, events, sessions, carts });
 

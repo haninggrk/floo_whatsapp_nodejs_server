@@ -53,6 +53,11 @@ export class OdooClient {
     return this.callModel('sale.order', 'wa_get_customer_by_phone', [phone]);
   }
 
+  async getCompanyName(): Promise<string> {
+    const res = await this.callModel<{ company_name: string }>('sale.order', 'wa_get_company_name', []);
+    return res.company_name || 'Perusahaan';
+  }
+
   async findOrCreateCustomer(phone: string, name: string): Promise<OdooCustomer> {
     return this.callModel('sale.order', 'wa_find_or_create_customer', [phone, name]);
   }
