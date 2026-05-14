@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { OdooClient } from '../modules/odoo/client.js';
+import type { EvolutionClient } from '../modules/evolution/client.js';
 
 interface AddressRegisterQuery {
   phone?: string;
@@ -467,7 +468,7 @@ function renderFormHtml(phone: string, partnerId: string): string {
 
 export async function addressRegisterRoutes(
   app: FastifyInstance,
-  opts: { odoo: OdooClient },
+  opts: { odoo: OdooClient; evolution?: EvolutionClient },
 ): Promise<void> {
   app.get('/address/regions/provinces', async (_request, reply) => {
     const rows = await getWilayahRows();
@@ -562,6 +563,14 @@ export async function addressRegisterRoutes(
       province: String(body.province || '').trim(),
       postal_code: String(body.postal_code || '').trim(),
     });
+
+    if (opts.evolution) {
+      try {
+        await opts.evolution.sendText(phone, 'Alamat berhasil disimpan. Ketik *mulai* untuk lanjut pemesanan.');
+      } catch {
+        // Keep form success even if outbound WhatsApp notification fails.
+      }
+    }
 
     reply.status(200).send({ ok: true });
   });

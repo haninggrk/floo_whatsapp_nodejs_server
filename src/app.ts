@@ -33,7 +33,7 @@ async function bootstrap(): Promise<void> {
 
   await app.register(healthRoutes);
   await app.register(testRoutes, { config, evolution, odoo, db });
-  await app.register(addressRegisterRoutes, { odoo });
+  await app.register(addressRegisterRoutes, { odoo, evolution });
   await app.register(webhookRoutes, { engine });
   await app.register(odooWebhookRoutes, { evolution, events, sessions, carts });
 
