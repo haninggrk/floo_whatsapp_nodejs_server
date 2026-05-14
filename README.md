@@ -47,6 +47,7 @@ docker build -t floo-whatsapp-nodejs-server .
 ## Test endpoint
 
 - `POST /test/send-message`
+- `GET /test/evolution-ping`
 
 Purpose:
 - Sends a WhatsApp test message to `TEST_RECIPIENT_PHONE` (default `+6281357737545`).
@@ -62,3 +63,6 @@ Body (JSON):
 Optional security:
 - Set `TEST_ENDPOINT_KEY` in env.
 - If set, request must include header `x-test-key: <your-key>`.
+
+Diagnostic:
+- `GET /test/evolution-ping` checks DNS and basic HTTP reachability to `EVOLUTION_API_URL` from inside the app container.
