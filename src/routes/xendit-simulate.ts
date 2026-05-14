@@ -6,6 +6,37 @@ interface SimulateBody {
   paymentRequestId?: string;
 }
 
+function normalizePaymentRequestId(input: string): string {
+  const raw = (input || '').trim();
+  if (!raw) return '';
+
+  if (/^pr-[a-zA-Z0-9-]{10,}$/.test(raw)) {
+    return raw;
+  }
+
+  try {
+    const url = new URL(raw);
+    const candidates: string[] = [];
+
+    for (const part of url.pathname.split('/')) {
+      if (part) candidates.push(part);
+    }
+    for (const value of url.searchParams.values()) {
+      if (value) candidates.push(value);
+    }
+
+    for (const candidate of candidates) {
+      if (/^pr-[a-zA-Z0-9-]{10,}$/.test(candidate)) {
+        return candidate;
+      }
+    }
+  } catch {
+    // Input is not URL and not valid payment request id.
+  }
+
+  return '';
+}
+
 function renderSimPage(): string {
   return `<!doctype html>
 <html lang="en">
@@ -113,7 +144,7 @@ function renderSimPage(): string {
         <input id="password" type="password" required />
       </label>
       <label>Payment Request ID
-        <input id="paymentRequestId" type="text" placeholder="pr-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required />
+        <input id="paymentRequestId" type="text" placeholder="pr-... atau URL checkout yang berisi pr-..." required />
       </label>
       <button id="runBtn" type="submit">Simulate Full Payment</button>
       <div class="muted">Endpoint: POST /v3/payment_requests/{payment_request_id}/simulate (api-version 2024-11-11)</div>
@@ -174,7 +205,7 @@ export async function xenditSimulateRoutes(
   app.post<{ Body: SimulateBody }>('/test/xendit-simulate/run', async (request, reply) => {
     const body = request.body || {};
     const password = String(body.password || '');
-    const paymentRequestId = String(body.paymentRequestId || '').trim();
+    const paymentRequestId = normalizePaymentRequestId(String(body.paymentRequestId || ''));
 
     if (!opts.config.SIMULATE_PAGE_PASSWORD) {
       reply.status(503).send({
@@ -195,7 +226,7 @@ export async function xenditSimulateRoutes(
     if (!paymentRequestId || paymentRequestId.length < 10) {
       reply.status(400).send({
         ok: false,
-        message: 'paymentRequestId is required.',
+        message: 'payment_request_id harus format pr-... . URL checkout seperti /web/<token> tidak cukup jika tidak mengandung pr-... .',
       });
       return;
     }
