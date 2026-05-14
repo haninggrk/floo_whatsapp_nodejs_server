@@ -95,11 +95,7 @@ export async function odooWebhookRoutes(
       await opts.evolution.sendText(
         phone,
         [
-          `Halo ${payload.partner_name || 'Bapak/Ibu'},`,
-          `Jadwal pengiriman untuk order *${payload.order_name || '-'}* sudah dikunci.`,
-          payload.scheduled_date ? `Jadwal kirim: ${payload.scheduled_date}` : '',
-          '',
-          'Jika ada perubahan, tim kami akan menghubungi Anda langsung.',
+          `Halo, pesanan *${payload.order_name || '-'}* telah dijadwalkan dikirim pada ${payload.scheduled_date || 'jadwal yang ditentukan'}.`,
         ]
           .filter(Boolean)
           .join('\n'),
