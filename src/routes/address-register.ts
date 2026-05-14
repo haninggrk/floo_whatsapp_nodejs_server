@@ -24,6 +24,7 @@ interface RegionParentQuery {
   provinceId?: string;
   regencyId?: string;
   districtId?: string;
+  villageId?: string;
 }
 
 interface RegionRow {
@@ -32,24 +33,11 @@ interface RegionRow {
   name: string;
 }
 
-const REGION_SOURCES = {
-  provinces: 'https://raw.githubusercontent.com/edwardsamuel/Wilayah-Administratif-Indonesia/master/csv/provinces.csv',
-  regencies: 'https://raw.githubusercontent.com/edwardsamuel/Wilayah-Administratif-Indonesia/master/csv/regencies.csv',
-  districts: 'https://raw.githubusercontent.com/edwardsamuel/Wilayah-Administratif-Indonesia/master/csv/districts.csv',
-  villages: 'https://raw.githubusercontent.com/edwardsamuel/Wilayah-Administratif-Indonesia/master/csv/villages.csv',
-} as const;
+const SOURCE_WILAYAH = 'https://raw.githubusercontent.com/cahyadsn/wilayah/master/db/wilayah.sql';
+const SOURCE_KODEPOS = 'https://raw.githubusercontent.com/cahyadsn/wilayah_kodepos/main/db/wilayah_kodepos.sql';
 
-const REGION_CACHE: {
-  provinces: RegionRow[] | null;
-  regencies: RegionRow[] | null;
-  districts: RegionRow[] | null;
-  villages: RegionRow[] | null;
-} = {
-  provinces: null,
-  regencies: null,
-  districts: null,
-  villages: null,
-};
+let wilayahRowsCache: RegionRow[] | null = null;
+let kodeposMapCache: Map<string, string> | null = null;
 
 function escHtml(value: string): string {
   return value
@@ -58,6 +46,67 @@ function escHtml(value: string): string {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+function parentCode(code: string): string | undefined {
+  if (code.length === 2) return undefined;
+  if (code.length === 5) return code.slice(0, 2);
+  if (code.length === 8) return code.slice(0, 5);
+  if (code.length === 13) return code.slice(0, 8);
+  return undefined;
+}
+
+function parseSqlPairs(sql: string): Array<{ code: string; value: string }> {
+  const rows: Array<{ code: string; value: string }> = [];
+  const regex = /\('([^']+)'\s*,\s*'([^']*)'\)/g;
+  let match: RegExpExecArray | null = regex.exec(sql);
+  while (match) {
+    rows.push({ code: match[1], value: match[2] });
+    match = regex.exec(sql);
+  }
+  return rows;
+}
+
+async function getWilayahRows(): Promise<RegionRow[]> {
+  if (wilayahRowsCache) {
+    return wilayahRowsCache;
+  }
+
+  const response = await fetch(SOURCE_WILAYAH);
+  if (!response.ok) {
+    throw new Error('Failed to load wilayah master data');
+  }
+  const sql = await response.text();
+  const pairs = parseSqlPairs(sql);
+
+  wilayahRowsCache = pairs
+    .map((p) => ({
+      id: p.code,
+      parent_id: parentCode(p.code),
+      name: p.value,
+    }))
+    .filter((r) => r.id.length === 2 || r.id.length === 5 || r.id.length === 8 || r.id.length === 13);
+
+  return wilayahRowsCache;
+}
+
+async function getKodeposMap(): Promise<Map<string, string>> {
+  if (kodeposMapCache) {
+    return kodeposMapCache;
+  }
+
+  const response = await fetch(SOURCE_KODEPOS);
+  if (!response.ok) {
+    throw new Error('Failed to load kodepos master data');
+  }
+  const sql = await response.text();
+  const pairs = parseSqlPairs(sql);
+
+  kodeposMapCache = new Map<string, string>();
+  for (const row of pairs) {
+    kodeposMapCache.set(row.code, row.value);
+  }
+  return kodeposMapCache;
 }
 
 function renderFormHtml(phone: string, partnerId: string): string {
@@ -73,16 +122,16 @@ function renderFormHtml(phone: string, partnerId: string): string {
   <title>Daftar Alamat</title>
   <style>
     :root {
-      --bg: #f4f7fb;
+      --bg: #edf2ec;
       --card: #ffffff;
-      --ink: #1f2937;
-      --muted: #6b7280;
-      --brand: #0365f8;
-      --line: #d9e2f2;
+      --ink: #1f2d22;
+      --muted: #5f6d62;
+      --brand: #25523b;
+      --line: #c8d3ca;
     }
     body {
       margin: 0;
-      background: linear-gradient(135deg, #eef4ff 0%, #f8fbff 50%, #eef6f3 100%);
+      background: var(--bg);
       font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
       color: var(--ink);
       min-height: 100vh;
@@ -97,12 +146,12 @@ function renderFormHtml(phone: string, partnerId: string): string {
       background: var(--card);
       border: 1px solid var(--line);
       border-radius: 14px;
-      box-shadow: 0 10px 30px rgba(3, 101, 248, 0.08);
+      box-shadow: 0 8px 22px rgba(37, 82, 59, 0.12);
       overflow: hidden;
     }
     .head {
       padding: 18px 20px;
-      background: linear-gradient(135deg, #0365f8, #2f7dff);
+      background: var(--brand);
       color: #fff;
       font-weight: 600;
       font-size: 18px;
@@ -130,7 +179,7 @@ function renderFormHtml(phone: string, partnerId: string): string {
     }
     input:focus, select:focus {
       border-color: var(--brand);
-      box-shadow: 0 0 0 3px rgba(3, 101, 248, 0.12);
+      box-shadow: 0 0 0 3px rgba(37, 82, 59, 0.14);
     }
     .grid-2 {
       display: grid;
@@ -161,8 +210,15 @@ function renderFormHtml(phone: string, partnerId: string): string {
       min-height: 20px;
       font-size: 13px;
     }
-    #msg.ok { color: #0f766e; }
-    #msg.err { color: #b91c1c; }
+    #msg.ok { color: #0f5d36; }
+    #msg.err { color: #8c1f1f; }
+    .wa-link {
+      display: inline-block;
+      margin-top: 8px;
+      color: var(--brand);
+      text-decoration: underline;
+      font-weight: 600;
+    }
     @media (max-width: 700px) {
       .grid-2 { grid-template-columns: 1fr; }
       .head { font-size: 16px; }
@@ -185,7 +241,7 @@ function renderFormHtml(phone: string, partnerId: string): string {
           <input id="recipient_name" type="text" placeholder="Nama penerima barang" required />
         </label>
         <label>No HP Penerima
-          <input id="contact_phone" type="text" placeholder="08xxxxxxxxxx" required />
+          <input id="contact_phone" type="text" value="${safePhone}" placeholder="08xxxxxxxxxx" required />
         </label>
       </div>
 
@@ -220,7 +276,7 @@ function renderFormHtml(phone: string, partnerId: string): string {
       </div>
 
       <label>Kode Pos
-        <input id="postal_code" type="text" required />
+        <input id="postal_code" type="text" readonly required />
       </label>
 
       <div class="muted">Nomor WhatsApp: ${safePhone}</div>
@@ -237,6 +293,7 @@ function renderFormHtml(phone: string, partnerId: string): string {
     const cityEl = document.getElementById('city');
     const districtEl = document.getElementById('district');
     const villageEl = document.getElementById('village');
+    const postalEl = document.getElementById('postal_code');
 
     function setOptions(selectEl, items, placeholder) {
       selectEl.innerHTML = '';
@@ -267,6 +324,7 @@ function renderFormHtml(phone: string, partnerId: string): string {
       districtEl.disabled = true;
       setOptions(villageEl, [], 'Pilih Kelurahan');
       villageEl.disabled = true;
+      postalEl.value = '';
     }
 
     async function loadDistricts(regencyId) {
@@ -276,6 +334,7 @@ function renderFormHtml(phone: string, partnerId: string): string {
       districtEl.disabled = false;
       setOptions(villageEl, [], 'Pilih Kelurahan');
       villageEl.disabled = true;
+      postalEl.value = '';
     }
 
     async function loadVillages(districtId) {
@@ -283,6 +342,17 @@ function renderFormHtml(phone: string, partnerId: string): string {
       const json = await response.json();
       setOptions(villageEl, json.items || [], 'Pilih Kelurahan');
       villageEl.disabled = false;
+      postalEl.value = '';
+    }
+
+    async function loadPostalCode(villageId) {
+      const response = await fetch('/address/regions/postal-code?villageId=' + encodeURIComponent(villageId));
+      const json = await response.json();
+      if (response.ok && json.postal_code) {
+        postalEl.value = json.postal_code;
+      } else {
+        postalEl.value = '';
+      }
     }
 
     provinceEl.addEventListener('change', async () => {
@@ -294,6 +364,7 @@ function renderFormHtml(phone: string, partnerId: string): string {
         districtEl.disabled = true;
         setOptions(villageEl, [], 'Pilih Kelurahan');
         villageEl.disabled = true;
+        postalEl.value = '';
         return;
       }
       await loadRegencies(provinceId);
@@ -306,6 +377,7 @@ function renderFormHtml(phone: string, partnerId: string): string {
         districtEl.disabled = true;
         setOptions(villageEl, [], 'Pilih Kelurahan');
         villageEl.disabled = true;
+        postalEl.value = '';
         return;
       }
       await loadDistricts(regencyId);
@@ -316,9 +388,19 @@ function renderFormHtml(phone: string, partnerId: string): string {
       if (!districtId) {
         setOptions(villageEl, [], 'Pilih Kelurahan');
         villageEl.disabled = true;
+        postalEl.value = '';
         return;
       }
       await loadVillages(districtId);
+    });
+
+    villageEl.addEventListener('change', async () => {
+      const villageId = villageEl.value;
+      if (!villageId) {
+        postalEl.value = '';
+        return;
+      }
+      await loadPostalCode(villageId);
     });
 
     form.addEventListener('submit', async (event) => {
@@ -328,8 +410,12 @@ function renderFormHtml(phone: string, partnerId: string): string {
       submitBtn.disabled = true;
       submitBtn.textContent = 'Menyimpan...';
 
+      const phone = document.getElementById('phone').value;
+      const phoneDigits = String(phone).replace(/[^\d]/g, '');
+      const waLink = 'https://wa.me/' + phoneDigits + '?text=' + encodeURIComponent('mulai');
+
       const payload = {
-        phone: document.getElementById('phone').value,
+        phone,
         partnerId: Number(document.getElementById('partnerId').value || 0) || undefined,
         customerName: (document.getElementById('customerName') || { value: '' }).value,
         recipient_name: document.getElementById('recipient_name').value,
@@ -339,7 +425,7 @@ function renderFormHtml(phone: string, partnerId: string): string {
         district: districtEl.options[districtEl.selectedIndex] ? districtEl.options[districtEl.selectedIndex].text : '',
         city: cityEl.options[cityEl.selectedIndex] ? cityEl.options[cityEl.selectedIndex].text : '',
         province: provinceEl.options[provinceEl.selectedIndex] ? provinceEl.options[provinceEl.selectedIndex].text : '',
-        postal_code: document.getElementById('postal_code').value,
+        postal_code: postalEl.value,
       };
 
       try {
@@ -355,8 +441,12 @@ function renderFormHtml(phone: string, partnerId: string): string {
         }
 
         msg.className = 'ok';
-        msg.textContent = 'Alamat berhasil disimpan. Kembali ke WhatsApp lalu ketik "mulai".';
+        msg.innerHTML = 'Alamat berhasil disimpan. Lanjut pemesanan via WhatsApp.<br/><a class="wa-link" href="' + waLink + '">Buka WhatsApp dan kirim "mulai"</a>';
         form.reset();
+        cityEl.disabled = true;
+        districtEl.disabled = true;
+        villageEl.disabled = true;
+        postalEl.value = '';
       } catch (error) {
         msg.className = 'err';
         msg.textContent = String(error && error.message ? error.message : error);
@@ -375,48 +465,13 @@ function renderFormHtml(phone: string, partnerId: string): string {
 </html>`;
 }
 
-function parseRegionCsv(content: string, hasParent: boolean): RegionRow[] {
-  return content
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const parts = line.split(',');
-      if (!hasParent) {
-        return { id: (parts[0] || '').trim(), name: (parts[1] || '').trim() };
-      }
-      return {
-        id: (parts[0] || '').trim(),
-        parent_id: (parts[1] || '').trim(),
-        name: parts.slice(2).join(',').trim(),
-      };
-    })
-    .filter((row) => row.id && row.name);
-}
-
-async function loadRegionData(kind: keyof typeof REGION_SOURCES): Promise<RegionRow[]> {
-  const cached = REGION_CACHE[kind];
-  if (cached) {
-    return cached;
-  }
-
-  const response = await fetch(REGION_SOURCES[kind]);
-  if (!response.ok) {
-    throw new Error(`Failed loading ${kind} data`);
-  }
-  const text = await response.text();
-  const rows = parseRegionCsv(text, kind !== 'provinces');
-  REGION_CACHE[kind] = rows;
-  return rows;
-}
-
 export async function addressRegisterRoutes(
   app: FastifyInstance,
   opts: { odoo: OdooClient },
 ): Promise<void> {
   app.get('/address/regions/provinces', async (_request, reply) => {
-    const items = await loadRegionData('provinces');
-    reply.status(200).send({ items });
+    const rows = await getWilayahRows();
+    reply.status(200).send({ items: rows.filter((r) => r.id.length === 2) });
   });
 
   app.get<{ Querystring: RegionParentQuery }>('/address/regions/regencies', async (request, reply) => {
@@ -425,8 +480,8 @@ export async function addressRegisterRoutes(
       reply.status(400).send({ items: [], message: 'provinceId is required' });
       return;
     }
-    const all = await loadRegionData('regencies');
-    reply.status(200).send({ items: all.filter((item) => item.parent_id === provinceId) });
+    const rows = await getWilayahRows();
+    reply.status(200).send({ items: rows.filter((r) => r.id.length === 5 && r.parent_id === provinceId) });
   });
 
   app.get<{ Querystring: RegionParentQuery }>('/address/regions/districts', async (request, reply) => {
@@ -435,8 +490,8 @@ export async function addressRegisterRoutes(
       reply.status(400).send({ items: [], message: 'regencyId is required' });
       return;
     }
-    const all = await loadRegionData('districts');
-    reply.status(200).send({ items: all.filter((item) => item.parent_id === regencyId) });
+    const rows = await getWilayahRows();
+    reply.status(200).send({ items: rows.filter((r) => r.id.length === 8 && r.parent_id === regencyId) });
   });
 
   app.get<{ Querystring: RegionParentQuery }>('/address/regions/villages', async (request, reply) => {
@@ -445,8 +500,20 @@ export async function addressRegisterRoutes(
       reply.status(400).send({ items: [], message: 'districtId is required' });
       return;
     }
-    const all = await loadRegionData('villages');
-    reply.status(200).send({ items: all.filter((item) => item.parent_id === districtId) });
+    const rows = await getWilayahRows();
+    reply.status(200).send({ items: rows.filter((r) => r.id.length === 13 && r.parent_id === districtId) });
+  });
+
+  app.get<{ Querystring: RegionParentQuery }>('/address/regions/postal-code', async (request, reply) => {
+    const villageId = String(request.query.villageId || '').trim();
+    if (!villageId) {
+      reply.status(400).send({ postal_code: '', message: 'villageId is required' });
+      return;
+    }
+
+    const map = await getKodeposMap();
+    const postalCode = map.get(villageId) || '';
+    reply.status(postalCode ? 200 : 404).send({ postal_code: postalCode });
   });
 
   app.get<{ Querystring: AddressRegisterQuery }>('/address/register', async (request, reply) => {
